@@ -1,0 +1,7 @@
+fastf1>=3.0.0
+pandas
+numpy
+scipy
+streamlit
+plotly
+pytest>=7.0.0
