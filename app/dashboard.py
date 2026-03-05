@@ -24,7 +24,10 @@ from src import data_loader
 from src import processor
 
 from fastf1.api import Cache
-Cache.enable_cache(str(_project_root / "data"))
+
+_cache_dir = _project_root / "data"
+_cache_dir.mkdir(parents=True, exist_ok=True)
+Cache.enable_cache(str(_cache_dir))
 
 st.set_page_config(page_title="V-A-G Telemetry Comparison", layout="wide")
 
