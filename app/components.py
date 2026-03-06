@@ -99,7 +99,7 @@ def plot_speed_comparison(
                 x=x_pts,
                 y=y_pts,
                 mode="markers",
-                name=f"{driver_a} freinage (début)",
+                name=f"{driver_a} braking onset",
                 marker=dict(symbol="x", size=7, color="darkblue"),
             )
         )
@@ -110,7 +110,7 @@ def plot_speed_comparison(
                 x=x_pts,
                 y=y_pts,
                 mode="markers",
-                name=f"{driver_b} freinage (début)",
+                name=f"{driver_b} braking onset",
                 marker=dict(symbol="x", size=7, color="crimson"),
             )
         )
@@ -171,7 +171,7 @@ def plot_overlays(
     fig.update_layout(
         title=title,
         xaxis_title="Lap Distance (m)",
-        yaxis_title="Valeur",
+        yaxis_title="Value",
         template="plotly_white",
         height=220,
         margin=dict(t=40, b=40, l=50, r=30),

@@ -130,7 +130,7 @@ year = st.sidebar.number_input("Year", min_value=2018, max_value=2025, value=202
 
 schedule = _get_schedule(int(year))
 event_display_options, display_to_event = _build_event_options(schedule)
-event_display = st.sidebar.selectbox("Course", options=event_display_options, index=0)
+event_display = st.sidebar.selectbox("Race", options=event_display_options, index=0)
 grand_prix = display_to_event.get(event_display, event_display)
 
 session_codes = _available_session_codes(schedule, grand_prix)
@@ -149,7 +149,7 @@ if st.session_state.session_key != session_key:
     st.session_state.driver_list = []
     st.session_state.laps_by_driver = {}
     try:
-        with st.sidebar.spinner("Chargement session..."):
+        with st.sidebar.spinner("Loading session..."):
             sess = data_loader.load_session(int(year), grand_prix, session_choice, cache_path=str(_cache_dir))
         st.session_state.session_obj = sess
         drivers = sess.laps["Driver"].dropna().unique().tolist()
@@ -157,14 +157,14 @@ if st.session_state.session_key != session_key:
             drivers = sess.results["Abbreviation"].dropna().astype(str).tolist()
         st.session_state.driver_list = sorted(map(str, drivers)) if drivers else []
     except Exception as e:
-        st.sidebar.warning(f"Impossible de charger la session: {e}")
+        st.sidebar.warning(f"Could not load session: {e}")
 
 driver_options = st.session_state.driver_list or ["VER", "HAM", "LEC", "NOR", "ALO"]
-driver_a = st.sidebar.selectbox("Pilote A (référence)", options=driver_options, index=0)
-driver_b = st.sidebar.selectbox("Pilote B", options=driver_options, index=min(1, len(driver_options) - 1))
+driver_a = st.sidebar.selectbox("Driver A (reference)", options=driver_options, index=0)
+driver_b = st.sidebar.selectbox("Driver B", options=driver_options, index=min(1, len(driver_options) - 1))
 
 if driver_a == driver_b:
-    st.sidebar.error("Choisis deux pilotes différents.")
+    st.sidebar.error("Please select two different drivers.")
 
 
 def _lap_choices_for_driver(driver: str) -> list[tuple[str, str | int]]:
@@ -188,13 +188,13 @@ lap_a_options = _lap_choices_for_driver(driver_a)
 lap_b_options = _lap_choices_for_driver(driver_b)
 
 lap_a = st.sidebar.selectbox(
-    "Tour A",
+    "Lap A",
     options=[v for _, v in lap_a_options],
     format_func=lambda v: {val: label for label, val in lap_a_options}.get(v, str(v)),
     index=0,
 )
 lap_b = st.sidebar.selectbox(
-    "Tour B",
+    "Lap B",
     options=[v for _, v in lap_b_options],
     format_func=lambda v: {val: label for label, val in lap_b_options}.get(v, str(v)),
     index=0,
@@ -205,10 +205,10 @@ st.title("Comparative Telemetry Analysis (V-A-G)")
 
 if st.button("Load & Compare"):
     if driver_a == driver_b:
-        st.error("Sélection invalide: Pilote A et Pilote B sont identiques.")
+        st.error("Invalid selection: Driver A and Driver B are identical.")
         st.stop()
     if st.session_state.session_obj is None:
-        st.error("Session non chargée. Vérifie l’année / course / session.")
+        st.error("Session is not loaded. Check year / race / session.")
         st.stop()
     with st.spinner("Loading telemetry and computing..."):
         try:
@@ -234,19 +234,20 @@ if st.button("Load & Compare"):
         col1, col2, col3, col4 = st.columns(4)
         delta_finish = float(dt[-1]) if len(dt) else float("nan")
         lap_dist = float(d[-1] - d[0]) if len(d) > 1 else float("nan")
-        delta_integral = float(np.trapz(dt, d)) if len(d) > 1 else float("nan")  # s·m
+        # NumPy 2.x: prefer trapezoid over deprecated/removed trapz
+        delta_integral = float(np.trapezoid(dt, d)) if len(d) > 1 else float("nan")  # s·m
         delta_avg = (delta_integral / lap_dist) if lap_dist and lap_dist > 0 else float("nan")
 
         with col1:
-            st.metric("Δt fin de tour (B - A)", f"{delta_finish:+.3f} s")
+            st.metric("Finish Δt (B - A)", f"{delta_finish:+.3f} s")
         with col2:
-            st.metric("Δt moyen (sur distance)", f"{delta_avg:+.3f} s")
+            st.metric("Average Δt (over distance)", f"{delta_avg:+.3f} s")
         with col3:
-            st.metric("Vitesse max A / B", f"{np.nanmax(da['Speed']):.0f} / {np.nanmax(db['Speed']):.0f} km/h")
+            st.metric("Max speed A / B", f"{np.nanmax(da['Speed']):.0f} / {np.nanmax(db['Speed']):.0f} km/h")
         with col4:
-            st.metric("Vitesse min A / B", f"{np.nanmin(da['Speed']):.0f} / {np.nanmin(db['Speed']):.0f} km/h")
+            st.metric("Min speed A / B", f"{np.nanmin(da['Speed']):.0f} / {np.nanmin(db['Speed']):.0f} km/h")
 
-        with st.expander("Détails tours (secteurs)"):
+        with st.expander("Lap details (sectors)"):
             def _fmt_td(x):
                 if x is None or (isinstance(x, float) and np.isnan(x)) or (hasattr(pd, "isna") and pd.isna(x)):
                     return None
@@ -352,7 +353,7 @@ if st.button("Load & Compare"):
             )
             st.plotly_chart(fig_ov, use_container_width=True)
 
-        with st.expander("Points de freinage (distance)"):
+        with st.expander("Braking points (distance)"):
             max_len = int(max(len(brake_pts_a), len(brake_pts_b)))
             df_brk = pd.DataFrame(
                 {
@@ -388,7 +389,7 @@ if st.button("Load & Compare"):
         csv_buf = io.StringIO()
         out.to_csv(csv_buf, index=False)
         st.download_button(
-            "Télécharger CSV (signaux resynchronisés)",
+            "Download CSV (resynced signals)",
             data=csv_buf.getvalue().encode("utf-8"),
             file_name=f"telemetry_resynced_{year}_{grand_prix}_{session_choice}_{driver_a}_vs_{driver_b}.csv",
             mime="text/csv",
@@ -411,7 +412,7 @@ if st.button("Load & Compare"):
         if "Gx" in da.columns and "Gy" in da.columns:
             figs["kamm_circle.png"] = fig_kamm
 
-        st.caption("Pour l’export PNG, `kaleido` doit être installé côté serveur (Streamlit Cloud).")
+        st.caption("For PNG export, `kaleido` must be installed on the server (Streamlit Cloud).")
         any_png = False
         for filename, fig in figs.items():
             png = _fig_to_png_bytes(fig)
@@ -419,13 +420,13 @@ if st.button("Load & Compare"):
                 continue
             any_png = True
             st.download_button(
-                f"Télécharger {filename}",
+                f"Download {filename}",
                 data=png,
                 file_name=filename,
                 mime="image/png",
             )
         if not any_png:
-            st.warning("Export PNG indisponible (probablement `kaleido` manquant).")
+            st.warning("PNG export unavailable (likely missing `kaleido`).")
 
 else:
-    st.info("Sélectionne année/course/session/pilotes dans la barre latérale, puis clique sur **Load & Compare**.")
+    st.info("Select year/race/session/drivers in the sidebar, then click **Load & Compare**.")
