@@ -4,4 +4,5 @@ numpy
 scipy
 streamlit
 plotly
+kaleido
 pytest>=7.0.0

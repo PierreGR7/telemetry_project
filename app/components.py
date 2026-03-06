@@ -56,6 +56,8 @@ def plot_speed_comparison(
     driver_a: str,
     driver_b: str,
     title: str = "Speed",
+    brake_points_a: tuple[np.ndarray, np.ndarray] | None = None,
+    brake_points_b: tuple[np.ndarray, np.ndarray] | None = None,
 ) -> go.Figure:
     """
     Plot speed of both drivers vs lap distance.
@@ -90,12 +92,88 @@ def plot_speed_comparison(
             line=dict(color="crimson", width=1.5),
         )
     )
+    if brake_points_a is not None:
+        x_pts, y_pts = brake_points_a
+        fig.add_trace(
+            go.Scatter(
+                x=x_pts,
+                y=y_pts,
+                mode="markers",
+                name=f"{driver_a} freinage (début)",
+                marker=dict(symbol="x", size=7, color="darkblue"),
+            )
+        )
+    if brake_points_b is not None:
+        x_pts, y_pts = brake_points_b
+        fig.add_trace(
+            go.Scatter(
+                x=x_pts,
+                y=y_pts,
+                mode="markers",
+                name=f"{driver_b} freinage (début)",
+                marker=dict(symbol="x", size=7, color="crimson"),
+            )
+        )
     fig.update_layout(
         title=title,
         xaxis_title="Lap Distance (m)",
         yaxis_title="Speed (km/h)",
         template="plotly_white",
         height=280,
+        margin=dict(t=40, b=40, l=50, r=30),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+    )
+    return fig
+
+
+def plot_overlays(
+    distance: np.ndarray,
+    driver_a: str,
+    driver_b: str,
+    *,
+    drs_a: np.ndarray | None = None,
+    drs_b: np.ndarray | None = None,
+    ers_a: np.ndarray | None = None,
+    ers_b: np.ndarray | None = None,
+    title: str = "Overlays (DRS / ERS)",
+) -> go.Figure:
+    """
+    Plot optional overlay channels (DRS, ERS) vs distance.
+    """
+    fig = go.Figure()
+
+    def _add_step(x, y, name, color):
+        fig.add_trace(
+            go.Scatter(
+                x=x,
+                y=y,
+                mode="lines",
+                name=name,
+                line=dict(color=color, width=1.5, shape="hv"),
+            )
+        )
+
+    has_any = False
+    if drs_a is not None and drs_b is not None:
+        has_any = True
+        _add_step(distance, drs_a, f"{driver_a} DRS", "darkblue")
+        _add_step(distance, drs_b, f"{driver_b} DRS", "crimson")
+
+    if ers_a is not None and ers_b is not None:
+        has_any = True
+        _add_step(distance, ers_a, f"{driver_a} ERS", "teal")
+        _add_step(distance, ers_b, f"{driver_b} ERS", "orange")
+
+    if not has_any:
+        # Keep an empty-but-valid figure
+        fig.add_trace(go.Scatter(x=[0], y=[0], mode="lines", name="N/A", line=dict(color="gray")))
+
+    fig.update_layout(
+        title=title,
+        xaxis_title="Lap Distance (m)",
+        yaxis_title="Valeur",
+        template="plotly_white",
+        height=220,
         margin=dict(t=40, b=40, l=50, r=30),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
     )

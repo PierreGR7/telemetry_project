@@ -31,6 +31,15 @@ BASE_CHANNELS: List[str] = [
     "Z",
 ]
 
+# Optional telemetry channels that may exist depending on year/session
+OPTIONAL_CHANNELS: List[str] = [
+    "DRS",
+    "ERSDeployMode",
+    "ERSDeploy",
+    "ERSPower",
+    "ERS",
+]
+
 
 def _resample_on_distance(
     distance: np.ndarray,
@@ -121,7 +130,7 @@ def resync_telemetry(
     out_a = {"Distance": distance_axis, "Driver": driver_a}
     out_b = {"Distance": distance_axis, "Driver": driver_b}
 
-    for col in BASE_CHANNELS:
+    for col in (BASE_CHANNELS + OPTIONAL_CHANNELS):
         if col in ("Distance", "Driver"):
             continue
         if col not in df_a.columns or col not in df_b.columns:
@@ -198,3 +207,39 @@ def resync_and_derive(
         df_b = df_b.assign(Gx=gx_b, Gy=gy_b)
 
     return ResyncResult(distance=distance_axis, df_a=df_a, df_b=df_b, delta_t=delta_t)
+
+
+def detect_brake_onsets(
+    distance: np.ndarray,
+    brake: np.ndarray,
+    *,
+    threshold: float = 0.5,
+    debounce_m: float = 20.0,
+) -> np.ndarray:
+    """
+    Detect braking onset points along distance.
+
+    Args:
+        distance: Distance axis (m).
+        brake: Brake signal (bool-ish or 0/1 or %). Any value > threshold is "braking".
+        threshold: Threshold above which braking is considered active.
+        debounce_m: Minimum distance (m) between two detected onsets.
+
+    Returns:
+        1D array of distances (m) where braking starts.
+    """
+    if len(distance) == 0:
+        return np.array([], dtype=np.float64)
+    b = np.asarray(brake, dtype=np.float64)
+    active = b > threshold
+    rising = np.flatnonzero(np.logical_and(active[1:], np.logical_not(active[:-1]))) + 1
+    if rising.size == 0:
+        return np.array([], dtype=np.float64)
+
+    pts = distance[rising].astype(np.float64)
+    # Debounce: keep first onset, then only those far enough
+    kept = [pts[0]]
+    for x in pts[1:]:
+        if (x - kept[-1]) >= debounce_m:
+            kept.append(float(x))
+    return np.array(kept, dtype=np.float64)

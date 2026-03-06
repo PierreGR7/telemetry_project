@@ -40,7 +40,9 @@ def setup_cache(cache_path: str | Path | None = None) -> str:
     if cache_path is None:
         project_root = Path(__file__).resolve().parent.parent
         cache_path = project_root / "data"
-    path = str(Path(cache_path).resolve())
+    cache_path = Path(cache_path).resolve()
+    cache_path.mkdir(parents=True, exist_ok=True)
+    path = str(cache_path)
     from fastf1.api import Cache
     Cache.enable_cache(path)
     return path
@@ -74,6 +76,13 @@ def _telemetry_to_base_df(telemetry_df: pd.DataFrame, driver: str) -> pd.DataFra
     x = df["X"].values * 0.1 if "X" in df.columns else df["X"].values
     y = df["Y"].values * 0.1 if "Y" in df.columns else df["Y"].values
     z = df["Z"].values * 0.1 if "Z" in df.columns else df["Z"].values
+    extras: dict[str, object] = {}
+    # Optional channels for overlays / enrichment
+    if "DRS" in df.columns:
+        extras["DRS"] = df["DRS"].values
+    for ers_col in ("ERSDeployMode", "ERSDeploy", "ERSPower", "ERS"):
+        if ers_col in df.columns:
+            extras[ers_col] = df[ers_col].values
     out = pd.DataFrame(
         {
             "Time": time_sec,
@@ -87,9 +96,96 @@ def _telemetry_to_base_df(telemetry_df: pd.DataFrame, driver: str) -> pd.DataFra
             "X": x,
             "Y": y,
             "Z": z,
+            **extras,
         }
     )
     return out
+
+
+def load_session(
+    year: int,
+    grand_prix: str,
+    session: str,
+    cache_path: str | Path | None = None,
+):
+    """
+    Load a FastF1 session object (with cache enabled).
+
+    Returns:
+        Loaded fastf1 session object.
+    """
+    setup_cache(cache_path)
+    fastf1 = _get_fastf1()
+    try:
+        session_obj = fastf1.get_session(year, grand_prix, session)
+    except Exception as e:
+        raise ValueError(f"Session not found or invalid: {year} {grand_prix} {session}") from e
+    try:
+        session_obj.load()
+    except Exception as e:
+        raise ValueError(
+            f"Failed to load session data (API or network error): {year} {grand_prix} {session}"
+        ) from e
+    return session_obj
+
+
+def load_driver_lap_telemetry(
+    session_obj,
+    driver: str,
+    lap: str | int = "fastest",
+) -> tuple[pd.DataFrame, dict]:
+    """
+    Load telemetry for a driver's lap.
+
+    Args:
+        session_obj: Loaded FastF1 session object.
+        driver: Driver abbreviation (e.g. 'VER').
+        lap: 'fastest' (default) or a lap number (int).
+
+    Returns:
+        (telemetry_df, lap_meta)
+    """
+    try:
+        driver_laps = session_obj.laps.pick_driver(driver)
+    except Exception as e:
+        raise ValueError(f"Driver not found in session: {driver}") from e
+    if driver_laps is None or len(driver_laps) == 0:
+        raise ValueError(f"No laps found for driver: {driver} (e.g. DNS)")
+
+    if isinstance(lap, str) and lap.lower() == "fastest":
+        try:
+            lap_obj = driver_laps.pick_fastest()
+        except Exception as e:
+            raise ValueError(f"No valid fastest lap for driver: {driver}") from e
+    else:
+        try:
+            lap_number = int(lap)
+        except Exception as e:
+            raise ValueError(f"Invalid lap selection for {driver}: {lap}") from e
+        matches = driver_laps[driver_laps["LapNumber"] == lap_number]
+        if matches is None or len(matches) == 0:
+            raise ValueError(f"Lap {lap_number} not found for driver: {driver}")
+        lap_obj = matches.iloc[0]
+
+    if lap_obj is None:
+        raise ValueError(f"Lap not found for driver: {driver}")
+
+    try:
+        tel = lap_obj.get_telemetry()
+    except Exception as e:
+        raise ValueError(f"Failed to get telemetry for driver: {driver}") from e
+    tel = tel.add_distance()
+    df = _telemetry_to_base_df(tel, driver)
+
+    lap_meta = {
+        "Driver": driver,
+        "LapNumber": getattr(lap_obj, "LapNumber", None) if not hasattr(lap_obj, "get") else lap_obj.get("LapNumber"),
+        "LapTime": getattr(lap_obj, "LapTime", None) if not hasattr(lap_obj, "get") else lap_obj.get("LapTime"),
+        "Sector1Time": getattr(lap_obj, "Sector1Time", None) if not hasattr(lap_obj, "get") else lap_obj.get("Sector1Time"),
+        "Sector2Time": getattr(lap_obj, "Sector2Time", None) if not hasattr(lap_obj, "get") else lap_obj.get("Sector2Time"),
+        "Sector3Time": getattr(lap_obj, "Sector3Time", None) if not hasattr(lap_obj, "get") else lap_obj.get("Sector3Time"),
+    }
+    return df, lap_meta
 
 
 def load_driver_fastest_lap_telemetry(
